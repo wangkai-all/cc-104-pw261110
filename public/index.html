@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>调查表整理 · DOCX 表格转数据表</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">▦</span>
+        <div>
+          <h1>调查表整理</h1>
+          <p>Word 调查表 → 可追溯的统一数据表</p>
+        </div>
+      </div>
+      <nav class="steps" aria-label="流程步骤">
+        <button class="step" data-step="upload" type="button"><span>1</span>上传文档</button>
+        <button class="step" data-step="map" type="button"><span>2</span>字段对应</button>
+        <button class="step" data-step="preview" type="button"><span>3</span>预览与导入</button>
+        <button class="step" data-step="batches" type="button"><span>4</span>批次记录</button>
+      </nav>
+      <div class="top-actions">
+        <button id="load-sample-btn" class="btn ghost" type="button">载入示例文件</button>
+        <button id="help-btn" class="btn ghost" type="button" title="使用说明">?</button>
+      </div>
+    </header>
+
+    <main>
+      <!-- STEP 1: upload -->
+      <section id="step-upload" class="panel">
+        <div class="upload-grid">
+          <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="上传 DOCX 文件">
+            <div class="dz-icon">⬆</div>
+            <p class="dz-title">拖入 DOCX 文件，或点击选择</p>
+            <p class="dz-sub">支持 .docx；相同的文件不会重复生成数据批次</p>
+            <input id="file-input" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+          </div>
+          <div class="upload-side">
+            <h2>示例文件</h2>
+            <p class="muted">以下样本全部为虚构数据，不含任何个人信息，可直接下载并完整走一遍流程。</p>
+            <ul id="sample-list" class="sample-list">
+              <li><button class="link sample-open" data-sample="sample_survey.docx" type="button">sample_survey.docx</button><span>含合并标题、跨行地区、重复表头、小计、附注、空/无/0、嵌套表</span></li>
+              <li><button class="link sample-open" data-sample="sample_survey_second.docx" type="button">sample_survey_second.docx</button><span>与上一份结构完全相同、数据不同，可套用已保存的方案</span></li>
+              <li><button class="link sample-open" data-sample="sample_survey_revised.docx" type="button">sample_survey_revised.docx</button><span>结构已变化（少一列、表头改名、表顺序调换）</span></li>
+              <li><button class="link sample-open" data-sample="sample_nested.docx" type="button">sample_nested.docx</button><span>单元格内嵌套表，需要选择处理范围</span></li>
+            </ul>
+            <p><a id="download-sample" class="btn ghost small" href="/samples/sample_survey.docx" download>下载示例 DOCX</a></p>
+            <div id="upload-status" class="status" role="status" aria-live="polite"></div>
+          </div>
+        </div>
+
+        <div class="split" id="upload-preview" hidden>
+          <div class="pane left">
+            <div class="pane-head">
+              <h2>原始表格</h2>
+              <div class="pane-tools">
+                <span id="doc-title" class="doc-title"></span>
+                <button id="download-original" class="btn ghost small" type="button">下载原文件</button>
+              </div>
+            </div>
+            <div id="doc-view" class="doc-view" aria-label="原文档表格"></div>
+          </div>
+          <div class="pane right">
+            <div class="pane-head"><h2>识别概览</h2></div>
+            <div id="upload-summary" class="pane-body"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 2: mapping -->
+      <section id="step-map" class="panel" hidden>
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <button id="map-back" class="btn ghost small" type="button">← 返回上传</button>
+            <span id="map-file" class="chip"></span>
+            <span id="map-region-count" class="chip light"></span>
+          </div>
+          <div class="toolbar-right">
+            <label class="field inline">
+              <span>方案名称</span>
+              <input id="spec-name" type="text" placeholder="例如：2026 年供水调查标准方案">
+            </label>
+            <button id="spec-library-btn" class="btn ghost" type="button">方案库</button>
+            <button id="save-spec" class="btn" type="button">保存映射方案</button>
+          </div>
+        </div>
+        <div id="spec-diff-panel" class="diff-panel" hidden></div>
+
+        <div class="map-layout">
+          <div class="map-left">
+            <div class="pane-head">
+              <h2>原表格（点击行选择数据范围）</h2>
+              <div class="pane-tools">
+                <label class="field inline small">
+                  <span>表格</span>
+                  <select id="table-select"></select>
+                </label>
+              </div>
+            </div>
+            <div id="map-doc" class="doc-view compact" aria-label="选择数据区"></div>
+            <div class="legend">
+              <span class="lg title">标题</span>
+              <span class="lg header">表头</span>
+              <span class="lg data">数据</span>
+              <span class="lg subtotal">小计/合计</span>
+              <span class="lg note">附注</span>
+              <span class="lg repeated">重复表头</span>
+              <span class="lg outside">范围外</span>
+            </div>
+          </div>
+          <div class="map-right">
+            <div id="region-tabs" class="region-tabs" role="tablist"></div>
+            <div id="region-editor" class="region-editor"></div>
+            <div id="pending-panel" class="pending-panel"></div>
+            <div class="map-actions">
+              <button id="goto-preview" class="btn primary" type="button">预览数据 →</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 3: preview -->
+      <section id="step-preview" class="panel" hidden>
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <button id="preview-back" class="btn ghost small" type="button">← 返回字段对应</button>
+            <span id="preview-file" class="chip"></span>
+            <span id="preview-stats" class="chip light"></span>
+          </div>
+          <div class="toolbar-right">
+            <button id="export-csv" class="btn ghost" type="button">导出 CSV</button>
+            <button id="commit-btn" class="btn primary" type="button">确认导入</button>
+          </div>
+        </div>
+        <div id="preview-banner" class="banner" hidden></div>
+        <div id="preview-diff" class="diff-panel" hidden></div>
+        <div class="split">
+          <div class="pane left">
+            <div class="pane-head"><h2>原表格位置</h2><span class="hint">点击右侧任一取值可定位</span></div>
+            <div id="preview-doc" class="doc-view compact" aria-label="取值来源"></div>
+          </div>
+          <div class="pane right">
+            <div class="pane-head"><h2>预览数据</h2>
+              <div class="pane-tools">
+                <label class="field inline small"><span>筛选</span>
+                  <select id="preview-filter">
+                    <option value="all">全部取值</option>
+                    <option value="blank">仅空白</option>
+                    <option value="none">仅“无”</option>
+                    <option value="zero">仅零</option>
+                    <option value="inherited">仅继承的地区</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div id="prov-panel" class="prov-panel" hidden></div>
+            <div id="preview-table-wrap" class="pane-body scroll"></div>
+            <div id="preview-status" class="status" role="status" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 4: batches -->
+      <section id="step-batches" class="panel" hidden>
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <h2>批次记录</h2>
+            <span class="muted">旧批次与原始文件始终保留；更正映射后以新批次对比。</span>
+          </div>
+          <div class="toolbar-right">
+            <button id="refresh-batches" class="btn ghost" type="button">刷新</button>
+          </div>
+        </div>
+        <div id="batches-list" class="batches"></div>
+        <div id="batch-detail" class="batch-detail" hidden></div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <dialog id="spec-dialog">
+      <h2>映射方案库</h2>
+      <p class="muted" style="margin-bottom:10px">保存的方案可应用到结构相同的文件；结构有变化时会列出具体差异并阻止套用。</p>
+      <div id="spec-list" class="spec-list"></div>
+      <form method="dialog" style="margin-top:12px"><button class="btn ghost">关闭</button></form>
+    </dialog>
+
+    <dialog id="help-dialog">
+      <h2>使用说明</h2>
+      <ol>
+        <li><strong>上传</strong>：拖入 DOCX。相同文件（按内容哈希）只登记一次，不会重复生成批次。</li>
+        <li><strong>字段对应</strong>：左侧查看原表，点表格行设置数据区起点/终点；右侧确认表头、地区列和字段对应。已排除的小计、附注、重复表头会明确标出。</li>
+        <li><strong>待确认项</strong>：嵌套表、表头不唯一、地区空白无法继承、行结构异常都会列在右侧，选定范围或填写地区后继续。</li>
+        <li><strong>预览</strong>：每个数值都能点击定位到文件、表格、行列。空白、“无”和 0 分别保留为不同状态。</li>
+        <li><strong>方案复用</strong>：保存方案后应用到结构相同的文件；结构有变化时会列出具体差异并阻止套用。</li>
+        <li><strong>更正</strong>：修改映射后生成新批次，页面显示与上一批次的差异；确认导入时旧批次保留，仅标记为“已替换”。</li>
+      </ol>
+      <form method="dialog"><button class="btn">知道了</button></form>
+    </dialog>
+  </div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
